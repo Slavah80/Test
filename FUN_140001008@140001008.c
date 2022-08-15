@@ -1,29 +1,33 @@
-
-void FUN_140001008(undefined4 *param_1)
-
+__int64 sub_7FF7A06B39F0(char *a1, __int64 a2, char *a3, ...)
 {
-  DWORD DVar1;
-  int iVar2;
-  undefined auStack216 [32];
-  WCHAR local_b8 [80];
-  ulonglong local_18;
-  
-  local_18 = DAT_140006008 ^ (ulonglong)auStack216;
-  DVar1 = GetEnvironmentVariableW(L"OutputEncoding",local_b8,0x50);
-  *param_1 = 1;
-  if ((DVar1 - 1 < 0x4e) && (iVar2 = _wcsicmp(local_b8,L"Unicode"), iVar2 != 0)) {
-    iVar2 = _wcsicmp(local_b8,L"Ansi");
-    if (iVar2 == 0) {
-      *param_1 = 0;
-    }
-    else {
-      iVar2 = _wcsicmp(local_b8,L"UTF8");
-      if ((iVar2 == 0) || (iVar2 = _wcsicmp(local_b8,L"UTF-8"), iVar2 == 0)) {
-        *param_1 = 0xfde9;
-      }
-    }
-  }
-  FUN_1400035d0(local_18 ^ (ulonglong)auStack216);
-  return;
-}
+  unsigned __int64 v4; // rbx
+  unsigned int v5; // edi
+  int v6; // eax
+  __int64 result; // rax
+  va_list Args; // [rsp+58h] [rbp+20h] BYREF
 
+  va_start(Args, a3);
+  if ( (unsigned __int64)(a2 - 1) > 0x7FFFFFFE )
+  {
+    result = 2147942487i64;
+    if ( a2 )
+      *(_WORD *)a1 = 0;
+  }
+  else
+  {
+    v4 = a2 - 1;
+    v5 = 0;
+    v6 = vsnwprintf(a1, a2 - 1, a3, Args);
+    if ( v6 < 0 || v6 > v4 )
+    {
+      *(_WORD *)&a1[2 * v4] = 0;
+      return (unsigned int)-2147024774;
+    }
+    else if ( v6 == v4 )
+    {
+      *(_WORD *)&a1[2 * v4] = 0;
+    }
+    return v5;
+  }
+  return result;
+}
