@@ -8,13 +8,13 @@
     "createdDateTime@odata.type":  "#DateTimeOffset",
     "createdDateTime":  "2024-08-26T08:12:16.9425779Z",
     "lastModifiedDateTime@odata.type":  "#DateTimeOffset",
-    "lastModifiedDateTime":  "2024-09-05T21:43:38Z",
+    "lastModifiedDateTime":  "2024-09-15T20:33:23Z",
     "roleScopeTagIds@odata.type":  "#Collection(String)",
     "roleScopeTagIds":  [
                             "0"
                         ],
     "id":  "T_08cf8476-8513-4349-b498-d3f0002491f0",
-    "version":  "\"ed02c785-0000-1800-0000-66da260a0000\"",
+    "version":  "\"19024270-0000-1800-0000-66e744930000\"",
     "periodOfflineBeforeAccessCheck@odata.type":  "#Duration",
     "periodOfflineBeforeAccessCheck":  "PT12H",
     "periodOnlineBeforeAccessCheck@odata.type":  "#Duration",
@@ -42,10 +42,9 @@
     "periodBeforePinReset":  "PT0S",
     "allowedDataStorageLocations@odata.type":  "#Collection(microsoft.graph.managedAppDataStorageLocation)",
     "allowedDataStorageLocations":  [
-                                        "oneDriveForBusiness",
-                                        "sharePoint"
+                                        "oneDriveForBusiness"
                                     ],
-    "contactSyncBlocked":  false,
+    "contactSyncBlocked":  true,
     "printBlocked":  true,
     "fingerprintBlocked":  false,
     "disableAppPinIfDevicePinIsSet":  false,
@@ -75,7 +74,7 @@
     "mobileThreatDefenseRemediationAction@odata.type":  "#microsoft.graph.managedAppRemediationAction",
     "mobileThreatDefenseRemediationAction":  "block",
     "mobileThreatDefensePartnerPriority":  null,
-    "blockDataIngestionIntoOrganizationDocuments":  false,
+    "blockDataIngestionIntoOrganizationDocuments":  true,
     "allowedDataIngestionLocations@odata.type":  "#Collection(microsoft.graph.managedAppDataIngestionLocation)",
     "allowedDataIngestionLocations":  [
                                           "oneDriveForBusiness",
@@ -172,7 +171,7 @@
                                    "https://facetime.apple.com"
                                ],
     "minimumWarningSdkVersion":  null,
-    "messagingRedirectAppUrlScheme":  null,
+    "messagingRedirectAppUrlScheme":  "",
     "exemptedAppProtocols@odata.type":  "#Collection(microsoft.graph.keyValuePair)",
     "exemptedAppProtocols":  [
                                  {
