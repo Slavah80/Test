@@ -8,13 +8,13 @@
     "createdDateTime@odata.type":  "#DateTimeOffset",
     "createdDateTime":  "2024-08-26T08:12:16.9425779Z",
     "lastModifiedDateTime@odata.type":  "#DateTimeOffset",
-    "lastModifiedDateTime":  "2024-09-15T20:33:23Z",
+    "lastModifiedDateTime":  "2024-09-15T21:16:37Z",
     "roleScopeTagIds@odata.type":  "#Collection(String)",
     "roleScopeTagIds":  [
                             "0"
                         ],
     "id":  "T_08cf8476-8513-4349-b498-d3f0002491f0",
-    "version":  "\"19024270-0000-1800-0000-66e744930000\"",
+    "version":  "\"1a024e5d-0000-1800-0000-66e74eb50000\"",
     "periodOfflineBeforeAccessCheck@odata.type":  "#Duration",
     "periodOfflineBeforeAccessCheck":  "PT12H",
     "periodOnlineBeforeAccessCheck@odata.type":  "#Duration",
@@ -31,7 +31,7 @@
     "managedBrowserToOpenLinksRequired":  true,
     "saveAsBlocked":  true,
     "periodOfflineBeforeWipeIsEnforced@odata.type":  "#Duration",
-    "periodOfflineBeforeWipeIsEnforced":  "P90D",
+    "periodOfflineBeforeWipeIsEnforced":  "P30D",
     "pinRequired":  true,
     "maximumPinRetries":  5,
     "simplePinBlocked":  true,
@@ -42,7 +42,7 @@
     "periodBeforePinReset":  "PT0S",
     "allowedDataStorageLocations@odata.type":  "#Collection(microsoft.graph.managedAppDataStorageLocation)",
     "allowedDataStorageLocations":  [
-                                        "oneDriveForBusiness"
+
                                     ],
     "contactSyncBlocked":  true,
     "printBlocked":  true,
@@ -51,8 +51,8 @@
     "maximumRequiredOsVersion":  null,
     "maximumWarningOsVersion":  null,
     "maximumWipeOsVersion":  null,
-    "minimumRequiredOsVersion":  null,
-    "minimumWarningOsVersion":  null,
+    "minimumRequiredOsVersion":  "17.5.9",
+    "minimumWarningOsVersion":  "17.6.0",
     "minimumRequiredAppVersion":  null,
     "minimumWarningAppVersion":  null,
     "minimumWipeOsVersion":  null,
@@ -77,9 +77,7 @@
     "blockDataIngestionIntoOrganizationDocuments":  true,
     "allowedDataIngestionLocations@odata.type":  "#Collection(microsoft.graph.managedAppDataIngestionLocation)",
     "allowedDataIngestionLocations":  [
-                                          "oneDriveForBusiness",
-                                          "sharePoint",
-                                          "camera"
+
                                       ],
     "appActionIfUnableToAuthenticateUser@odata.type":  "#microsoft.graph.managedAppRemediationAction",
     "appActionIfUnableToAuthenticateUser":  "block",
