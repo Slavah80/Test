@@ -118,27 +118,27 @@ function Get-HardwareInfo {
 }
 
 function Get-DiskInfo {
-    $diskList = Invoke-MacOSCommand "diskutil list" "Failed to get disk list"
+    $diskList = Invoke-MacOSCommand "/usr/sbin/diskutil list" "Failed to get disk list"
     $dfOutput = Invoke-MacOSCommand "df -h" "Failed to get disk usage information"
     $localDisks = @()
     
     foreach ($line in $diskList) {
         if ($line -match "^/dev/(disk\d+).*:") {
             $currentDisk = $Matches[1]
-            $diskInfo = Invoke-MacOSCommand "diskutil info $currentDisk" "Failed to get disk info for $currentDisk"
+            $diskInfo = Invoke-MacOSCommand "/usr/sbin/diskutil info $currentDisk" "Failed to get disk info for $currentDisk"
             
             $diskSize = ($diskInfo | Where-Object { $_ -match "Total Size:\s*(.*)" }) -replace ".*Total Size:\s*", "" ?? "Unknown"
             $diskModel = ($diskInfo | Where-Object { $_ -match "Device / Media Name:\s*(.*)" }) -replace ".*Device / Media Name:\s*", "" ?? "Unknown"
             $diskType = ($diskInfo | Where-Object { $_ -match "Protocol:\s*(.*)" }) -replace ".*Protocol:\s*", "" ?? "Unknown"
             
             $partitions = @()
-            $partitionList = Invoke-MacOSCommand "diskutil list $currentDisk" "Failed to get partitions for $currentDisk"
+            $partitionList = Invoke-MacOSCommand "/usr/sbin/diskutil list $currentDisk" "Failed to get partitions for $currentDisk"
             
             foreach ($partLine in $partitionList) {
                 if ($partLine -match "^\s*\d+:\s+(\S+)\s+(.*?)\s{2,}\*?\s*([0-9.]+\s+[KMGT]B)\s+(disk\d+(?:s\d+)?)$") {
                     $partType, $partName, $partitionSize, $partDevice = $Matches[1..4]
                     
-                    $mountInfo = Invoke-MacOSCommand "diskutil info $partDevice" "Failed to get mount info for $partDevice"
+                    $mountInfo = Invoke-MacOSCommand "/usr/sbin/diskutil info $partDevice" "Failed to get mount info for $partDevice"
                     $mountPoint = ($mountInfo | Where-Object { $_ -match "Mount Point:\s*(.*)" }) -replace ".*Mount Point:\s*", "" ?? ""
                     
                     $usage = $null
@@ -173,7 +173,7 @@ function Get-SystemDiskInfo {
     
     $rootFsType = try { (Invoke-MacOSCommand "mount | grep ' on / '" "").Split('(')[1].Split(',')[0] } catch { "APFS" }
     $diskModel = try {
-        $info = Invoke-MacOSCommand "diskutil info $rootDevice" ""
+        $info = Invoke-MacOSCommand "/usr/sbin/diskutil info $rootDevice" ""
         if ($info -match 'Device / Media Name:\s*(.+)') { $matches[1].Trim() } else { $matches[1].Trim() }
     }
     catch { "Macintosh HD" }
@@ -197,7 +197,7 @@ function Get-SystemDiskInfo {
     $availableGB = [math]::Round((ConvertTo-GB $rootParts[3]), 2)
     $usePercentage = if ($sizeGB -gt 0) { [math]::Round(($usedGB / $sizeGB) * 100, 1) } else { 0 }
     
-    $smartHealth = Invoke-MacOSCommand "diskutil info $(diskutil info / | grep 'Part of Whole' | awk '{print $4}') | grep 'SMART Status' | awk -F': ' '{print $2}' | xargs" "Failed to get SMART status"
+    $smartHealth = Invoke-MacOSCommand "/usr/sbin/diskutil info $(/usr/sbin/diskutil info / | grep 'Part of Whole' | awk '{print $4}') | grep 'SMART Status' | awk -F': ' '{print $2}' | xargs" "Failed to get SMART status"
     
     return @{
         Device = $rootDevice; Model = $diskModel; Size_GB = $sizeGB; Used_GB = $usedGB; Available_GB = $availableGB
