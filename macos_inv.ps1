@@ -171,7 +171,7 @@ function Get-SystemDiskInfo {
     $rootParts = $rootDisk -split '\s+'
     $rootDevice = $rootParts[0]
     
-    $rootFsType = try { (Invoke-MacOSCommand "mount | grep ' on / '" "").Split('(')[1].Split(',')[0] } catch { "APFS" }
+    $rootFsType = try { (Invoke-MacOSCommand "/sbin/mount | grep ' on / '" "").Split('(')[1].Split(',')[0] } catch { "APFS" }
     $diskModel = try {
         $info = Invoke-MacOSCommand "/usr/sbin/diskutil info $rootDevice" ""
         if ($info -match 'Device / Media Name:\s*(.+)') { $matches[1].Trim() } else { $matches[1].Trim() }
@@ -209,7 +209,7 @@ function Get-SystemDiskInfo {
 }
 
 function Get-BatteryInfo {
-    $powerInfo = Invoke-MacOSCommand "system_profiler SPPowerDataType" "Failed to get power information"
+    $powerInfo = Invoke-MacOSCommand "/usr/sbin/system_profiler SPPowerDataType" "Failed to get power information"
     $hasBattery = $powerInfo -match "Battery Information:"
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
@@ -253,7 +253,7 @@ function Get-BatteryInfo {
 function Get-NetworkInfo {
     param($sysInfo)
     
-    $primaryInterface = Invoke-MacOSCommand "route get default | grep interface | awk '{print `$2}'" "Failed to get primary interface"
+    $primaryInterface = Invoke-MacOSCommand "/sbin/route get default | grep interface | awk '{print `$2}'" "Failed to get primary interface"
     
     $adapterInfo = @{
         AdapterName = $primaryInterface ?? "Unknown"; Status = @($null, $null, $null, 2, $null, $null)
@@ -268,7 +268,7 @@ function Get-NetworkInfo {
         $netmask = Invoke-MacOSCommand "ifconfig $primaryInterface | grep 'inet ' | awk '{print `$4}'" "Failed to get netmask"
         if ($netmask) { $adapterInfo.SubnetMask = $netmask }
         
-        $defaultGateway = Invoke-MacOSCommand "route get default | grep gateway | awk '{print `$2}'" "Failed to get default gateway"
+        $defaultGateway = Invoke-MacOSCommand "/sbin/route get default | grep gateway | awk '{print `$2}'" "Failed to get default gateway"
         if ($defaultGateway) { $adapterInfo.DefaultGateway = $defaultGateway }
         
         $dnsServers = Invoke-MacOSCommand "scutil --dns | grep 'nameserver\[[0-9]*\]' | awk '{print `$3}'" "Failed to get DNS servers"
@@ -293,7 +293,7 @@ function Get-SoftwareInfo {
     param($sysInfo)
     
     $installedSoftware = @()
-    $appInfo = Invoke-MacOSCommand "system_profiler SPApplicationsDataType" "Failed to get installed applications"
+    $appInfo = Invoke-MacOSCommand "/usr/sbin/system_profiler SPApplicationsDataType" "Failed to get installed applications"
     
     if ($appInfo) {
         $currentApp = @{}
@@ -309,11 +309,11 @@ function Get-SoftwareInfo {
         if ($currentApp.Name) { $installedSoftware += $currentApp }
     }
     
-    $brewList = Invoke-MacOSCommand "brew list --formula 2>/dev/null" "Homebrew not available"
+    $brewList = Invoke-MacOSCommand "/usr/local/bin/brew list --formula 2>/dev/null" "Homebrew not available"
     if ($brewList) {
         foreach ($package in $brewList) {
             if ($package.Trim()) {
-                $version = Invoke-MacOSCommand "brew list --versions $package 2>/dev/null" "Failed to get version for $package"
+                $version = Invoke-MacOSCommand "/usr/local/bin/brew list --versions $package 2>/dev/null" "Failed to get version for $package"
                 $versionString = if ($version -match "$package (.+)") { $Matches[1] } else { "Unknown" }
                 $installedSoftware += @{ Name = $package.Trim(); Version = $versionString; Vendor = "Homebrew"; InstallDate = "Unknown" }
             }
@@ -327,7 +327,7 @@ function Get-SoftwareInfo {
 function Get-DeviceInfo {
     param($sysInfo)
     
-    $usbDevices = Invoke-MacOSCommand "system_profiler SPUSBDataType" "Failed to get USB devices"
+    $usbDevices = Invoke-MacOSCommand "/usr/sbin/system_profiler SPUSBDataType" "Failed to get USB devices"
     $devices = @()
     
     if ($usbDevices) {
