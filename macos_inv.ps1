@@ -28,22 +28,22 @@ function Invoke-MacOSCommand {
 }
 
 function Get-SystemInfo {
-    $hostname = Invoke-MacOSCommand "hostname" "Failed to get hostname"
-    $fqdn = Invoke-MacOSCommand "hostname -f" "Failed to get FQDN" ?? $hostname
-    $ipAddress = Invoke-MacOSCommand "ifconfig | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print `$2}'" "Failed to get IP address" ?? "Unknown"
-    $arch = Invoke-MacOSCommand "uname -m" "Failed to get architecture"
-    $osVersion = Invoke-MacOSCommand "sw_vers -productVersion" "Failed to get macOS version"
-    $osBuild = Invoke-MacOSCommand "sw_vers -buildVersion" "Failed to get macOS build"
-    $osName = Invoke-MacOSCommand "sw_vers -productName" "Failed to get macOS name"
-    $installDate = Invoke-MacOSCommand "stat -f ""%Sm"" -t ""%Y-%m-%d %H:%M:%S"" /var/db/.AppleSetupDone" "Failed to get install date"
+    $hostname = Invoke-MacOSCommand "/usr/bin/hostname" "Failed to get hostname"
+    $fqdn = Invoke-MacOSCommand "/usr/bin/hostname -f" "Failed to get FQDN" ?? $hostname
+    $ipAddress = Invoke-MacOSCommand "/sbin/ifconfig | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print `$2}'" "Failed to get IP address" ?? "Unknown"
+    $arch = Invoke-MacOSCommand "/usr/bin/uname -m" "Failed to get architecture"
+    $osVersion = Invoke-MacOSCommand "/usr/bin/sw_vers -productVersion" "Failed to get macOS version"
+    $osBuild = Invoke-MacOSCommand "/usr/bin/sw_vers -buildVersion" "Failed to get macOS build"
+    $osName = Invoke-MacOSCommand "/usr/bin/sw_vers -productName" "Failed to get macOS name"
+    $installDate = Invoke-MacOSCommand "/usr/bin/stat -f ""%Sm"" -t ""%Y-%m-%d %H:%M:%S"" /var/db/.AppleSetupDone" "Failed to get install date"
     
-    $bootTimeRaw = Invoke-MacOSCommand "sysctl -n kern.boottime" "Failed to get boot time"
+    $bootTimeRaw = Invoke-MacOSCommand "/usr/sbin/sysctl -n kern.boottime" "Failed to get boot time"
     $lastBoot = if ($bootTimeRaw -match 'sec = (\d+)') {
         [DateTimeOffset]::FromUnixTimeSeconds([int]$Matches[1]).LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")
     }
     else { "Unknown" }
     
-    $uuid = Invoke-MacOSCommand "system_profiler SPHardwareDataType | grep 'Hardware UUID' | awk -F': ' '{print `$2}'" "Failed to get UUID" ?? "Unknown"
+    $uuid = Invoke-MacOSCommand "/usr/sbin/system_profiler SPHardwareDataType | /usr/bin/grep 'Hardware UUID' | /usr/bin/awk -F': ' '{print `$2}'" "Failed to get UUID" ?? "Unknown"
     
     return @{
         hostname = $hostname; fqdn = $fqdn; ipAddress = $ipAddress; arch = $arch
@@ -92,13 +92,13 @@ function Get-HardwareInfo {
         # $Slots = $slotsList
 
 
-    $cpuInfo = Invoke-MacOSCommand "system_profiler SPHardwareDataType" "Failed to get hardware info"
-    $cpuModel = sysctl -n machdep.cpu.brand_string
-    $cpuCores = sysctl -n hw.physicalcpu_max
-    $cpuLogicalProcessors = sysctl -n hw.logicalcpu_max
-    $currentSpeed = [math]::Round(($(sysctl -n hw.cpufrequency_max)) / 1000000)
-    $cpuTemp = sysctl -n machdep.cpu.thermal.sensor
-    $totalMemGB = [math]::Round(($(sysctl hw.memsize) -split ' ')[-1] / 1024 / 1024)
+    $cpuInfo = Invoke-MacOSCommand "/usr/sbin/system_profiler SPHardwareDataType" "Failed to get hardware info"
+    $cpuModel = /usr/sbin/sysctl -n machdep.cpu.brand_string
+    $cpuCores = /usr/sbin/sysctl -n hw.physicalcpu_max
+    $cpuLogicalProcessors = /usr/sbin/sysctl -n hw.logicalcpu_max
+    $currentSpeed = [math]::Round(($(/usr/sbin/sysctl -n hw.cpufrequency_max)) / 1000000)
+    $cpuTemp = /usr/sbin/sysctl -n machdep.cpu.thermal.sensor
+    $totalMemGB = [math]::Round(($(/usr/sbin/sysctl hw.memsize) -split ' ')[-1] / 1024 / 1024)
     # $slots = @{ Name = $slotsList.name; Size = $dfParts[2]; Type = $dfParts[3]; Speed = $dfParts[4]; Status = ; Manufacturer = ; PartNumber = ; SerialNumber =  }
     
     $model = ($cpuInfo | Where-Object { $_ -match "Model Name:" }) -replace ".*Model Name:\s*", ""
