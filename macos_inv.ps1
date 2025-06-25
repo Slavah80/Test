@@ -262,19 +262,19 @@ function Get-NetworkInfo {
     }
     
     if ($primaryInterface) {
-        $macAddress = Invoke-MacOSCommand "ifconfig $primaryInterface | grep ether | awk '{print `$2}'" "Failed to get MAC address"
+        $macAddress = Invoke-MacOSCommand "/sbin/ifconfig $primaryInterface | grep ether | awk '{print `$2}'" "Failed to get MAC address"
         if ($macAddress) { $adapterInfo.MacAddress = $macAddress.ToUpper().Replace(':', '-') }
         
-        $netmask = Invoke-MacOSCommand "ifconfig $primaryInterface | grep 'inet ' | awk '{print `$4}'" "Failed to get netmask"
+        $netmask = Invoke-MacOSCommand "/sbin/ifconfig $primaryInterface | grep 'inet ' | awk '{print `$4}'" "Failed to get netmask"
         if ($netmask) { $adapterInfo.SubnetMask = $netmask }
         
         $defaultGateway = Invoke-MacOSCommand "/sbin/route get default | grep gateway | awk '{print `$2}'" "Failed to get default gateway"
         if ($defaultGateway) { $adapterInfo.DefaultGateway = $defaultGateway }
         
-        $dnsServers = Invoke-MacOSCommand "scutil --dns | grep 'nameserver\[[0-9]*\]' | awk '{print `$3}'" "Failed to get DNS servers"
+        $dnsServers = Invoke-MacOSCommand "/usr/sbin/scutil --dns | grep 'nameserver\[[0-9]*\]' | awk '{print `$3}'" "Failed to get DNS servers"
         if ($dnsServers) { $adapterInfo.DNSServerSearchOrder = @($dnsServers) }
         
-        $arpEntries = Invoke-MacOSCommand "arp -an" "Failed to get ARP table"
+        $arpEntries = Invoke-MacOSCommand "/usr/sbin/arp -an" "Failed to get ARP table"
         if ($arpEntries) {
             $arpTable = @()
             foreach ($entry in $arpEntries) {
