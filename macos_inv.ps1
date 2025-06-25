@@ -171,7 +171,7 @@ function Get-SystemDiskInfo {
     $rootParts = $rootDisk -split '\s+'
     $rootDevice = $rootParts[0]
     
-    $rootFsType = try { (Invoke-MacOSCommand "/sbin/mount | grep ' on / '" "").Split('(')[1].Split(',')[0] } catch { "APFS" }
+    $rootFsType = try { (Invoke-MacOSCommand "/sbin/mount | /usr/bin/grep ' on / '" "").Split('(')[1].Split(',')[0] } catch { "APFS" }
     $diskModel = try {
         $info = Invoke-MacOSCommand "/usr/sbin/diskutil info $rootDevice" ""
         if ($info -match 'Device / Media Name:\s*(.+)') { $matches[1].Trim() } else { $matches[1].Trim() }
@@ -197,7 +197,7 @@ function Get-SystemDiskInfo {
     $availableGB = [math]::Round((ConvertTo-GB $rootParts[3]), 2)
     $usePercentage = if ($sizeGB -gt 0) { [math]::Round(($usedGB / $sizeGB) * 100, 1) } else { 0 }
     
-    $smartHealth = Invoke-MacOSCommand "/usr/sbin/diskutil info $(/usr/sbin/diskutil info / | grep 'Part of Whole' | awk '{print $4}') | grep 'SMART Status' | awk -F': ' '{print $2}' | xargs" "Failed to get SMART status"
+    $smartHealth = Invoke-MacOSCommand "/usr/sbin/diskutil info $(/usr/sbin/diskutil info / | /usr/bin/grep 'Part of Whole' | /usr/bin/awk '{print $4}') | /usr/bin/grep 'SMART Status' | /usr/bin/awk -F': ' '{print $2}' | xargs" "Failed to get SMART status"
     
     return @{
         Device = $rootDevice; Model = $diskModel; Size_GB = $sizeGB; Used_GB = $usedGB; Available_GB = $availableGB
@@ -253,7 +253,7 @@ function Get-BatteryInfo {
 function Get-NetworkInfo {
     param($sysInfo)
     
-    $primaryInterface = Invoke-MacOSCommand "/sbin/route get default | grep interface | awk '{print `$2}'" "Failed to get primary interface"
+    $primaryInterface = Invoke-MacOSCommand "/sbin/route get default | /usr/bin/grep interface | /usr/bin/awk '{print `$2}'" "Failed to get primary interface"
     
     $adapterInfo = @{
         AdapterName = $primaryInterface ?? "Unknown"; Status = @($null, $null, $null, 2, $null, $null)
@@ -262,16 +262,16 @@ function Get-NetworkInfo {
     }
     
     if ($primaryInterface) {
-        $macAddress = Invoke-MacOSCommand "/sbin/ifconfig $primaryInterface | grep ether | awk '{print `$2}'" "Failed to get MAC address"
+        $macAddress = Invoke-MacOSCommand "/sbin/ifconfig $primaryInterface | /usr/bin/grep ether | /usr/bin/awk '{print `$2}'" "Failed to get MAC address"
         if ($macAddress) { $adapterInfo.MacAddress = $macAddress.ToUpper().Replace(':', '-') }
         
-        $netmask = Invoke-MacOSCommand "/sbin/ifconfig $primaryInterface | grep 'inet ' | awk '{print `$4}'" "Failed to get netmask"
+        $netmask = Invoke-MacOSCommand "/sbin/ifconfig $primaryInterface | /usr/bin/grep 'inet ' | /usr/bin/awk '{print `$4}'" "Failed to get netmask"
         if ($netmask) { $adapterInfo.SubnetMask = $netmask }
         
-        $defaultGateway = Invoke-MacOSCommand "/sbin/route get default | grep gateway | awk '{print `$2}'" "Failed to get default gateway"
+        $defaultGateway = Invoke-MacOSCommand "/sbin/route get default | /usr/bin/grep gateway | /usr/bin/awk '{print `$2}'" "Failed to get default gateway"
         if ($defaultGateway) { $adapterInfo.DefaultGateway = $defaultGateway }
         
-        $dnsServers = Invoke-MacOSCommand "/usr/sbin/scutil --dns | grep 'nameserver\[[0-9]*\]' | awk '{print `$3}'" "Failed to get DNS servers"
+        $dnsServers = Invoke-MacOSCommand "/usr/sbin/scutil --dns | /usr/bin/grep 'nameserver\[[0-9]*\]' | /usr/bin/awk '{print `$3}'" "Failed to get DNS servers"
         if ($dnsServers) { $adapterInfo.DNSServerSearchOrder = @($dnsServers) }
         
         $arpEntries = Invoke-MacOSCommand "/usr/sbin/arp -an" "Failed to get ARP table"
