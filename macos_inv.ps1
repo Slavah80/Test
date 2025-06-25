@@ -30,7 +30,7 @@ function Invoke-MacOSCommand {
 function Get-SystemInfo {
     $hostname = Invoke-MacOSCommand "/usr/bin/hostname" "Failed to get hostname"
     $fqdn = Invoke-MacOSCommand "/usr/bin/hostname -f" "Failed to get FQDN" ?? $hostname
-    $ipAddress = Invoke-MacOSCommand "/sbin/ifconfig | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print `$2}'" "Failed to get IP address" ?? "Unknown"
+    $ipAddress = Invoke-MacOSCommand "/sbin/ifconfig | grep 'inet ' | /usr/bin/grep -v '127.0.0.1' | /usr/bin/head -1 | /usr/bin/awk '{print `$2}'" "Failed to get IP address" ?? "Unknown"
     $arch = Invoke-MacOSCommand "/usr/bin/uname -m" "Failed to get architecture"
     $osVersion = Invoke-MacOSCommand "/usr/bin/sw_vers -productVersion" "Failed to get macOS version"
     $osBuild = Invoke-MacOSCommand "/usr/bin/sw_vers -buildVersion" "Failed to get macOS build"
