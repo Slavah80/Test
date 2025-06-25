@@ -28,8 +28,8 @@ function Invoke-MacOSCommand {
 }
 
 function Get-SystemInfo {
-    $hostname = Invoke-MacOSCommand "/usr/bin/hostname" "Failed to get hostname"
-    $fqdn = Invoke-MacOSCommand "/usr/bin/hostname -f" "Failed to get FQDN" ?? $hostname
+    $hostname = Invoke-MacOSCommand "/bin/hostname" "Failed to get hostname"
+    $fqdn = Invoke-MacOSCommand "/bin/hostname -f" "Failed to get FQDN" ?? $hostname
     $ipAddress = Invoke-MacOSCommand "/sbin/ifconfig | grep 'inet ' | /usr/bin/grep -v '127.0.0.1' | /usr/bin/head -1 | /usr/bin/awk '{print `$2}'" "Failed to get IP address" ?? "Unknown"
     $arch = Invoke-MacOSCommand "/usr/bin/uname -m" "Failed to get architecture"
     $osVersion = Invoke-MacOSCommand "/usr/bin/sw_vers -productVersion" "Failed to get macOS version"
@@ -171,7 +171,7 @@ function Get-SystemDiskInfo {
     $rootParts = $rootDisk -split '\s+'
     $rootDevice = $rootParts[0]
     
-    $rootFsType = try { (Invoke-MacOSCommand "mount | grep ' on / '" "").Split('(')[1].Split(',')[0] } catch { "APFS" }
+    $rootFsType = try { (Invoke-MacOSCommand "/sbin/mount | grep ' on / '" "").Split('(')[1].Split(',')[0] } catch { "APFS" }
     $diskModel = try {
         $info = Invoke-MacOSCommand "/usr/sbin/diskutil info $rootDevice" ""
         if ($info -match 'Device / Media Name:\s*(.+)') { $matches[1].Trim() } else { $matches[1].Trim() }
@@ -197,7 +197,7 @@ function Get-SystemDiskInfo {
     $availableGB = [math]::Round((ConvertTo-GB $rootParts[3]), 2)
     $usePercentage = if ($sizeGB -gt 0) { [math]::Round(($usedGB / $sizeGB) * 100, 1) } else { 0 }
     
-    $smartHealth = Invoke-MacOSCommand "/usr/sbin/diskutil info $(/usr/sbin/diskutil info / | grep 'Part of Whole' | awk '{print $4}') | grep 'SMART Status' | awk -F': ' '{print $2}' | xargs" "Failed to get SMART status"
+    $smartHealth = Invoke-MacOSCommand "/usr/sbin/diskutil info $(/usr/sbin/diskutil/diskutil info / | grep 'Part of Whole' | awk '{print $4}') | grep 'SMART Status' | awk -F': ' '{print $2}' | xargs" "Failed to get SMART status"
     
     return @{
         Device = $rootDevice; Model = $diskModel; Size_GB = $sizeGB; Used_GB = $usedGB; Available_GB = $availableGB
@@ -209,7 +209,7 @@ function Get-SystemDiskInfo {
 }
 
 function Get-BatteryInfo {
-    $powerInfo = Invoke-MacOSCommand "system_profiler SPPowerDataType" "Failed to get power information"
+    $powerInfo = Invoke-MacOSCommand "/usr/sbin/system_profiler SPPowerDataType" "Failed to get power information"
     $hasBattery = $powerInfo -match "Battery Information:"
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
@@ -293,7 +293,7 @@ function Get-SoftwareInfo {
     param($sysInfo)
     
     $installedSoftware = @()
-    $appInfo = Invoke-MacOSCommand "system_profiler SPApplicationsDataType" "Failed to get installed applications"
+    $appInfo = Invoke-MacOSCommand "/usr/sbin/system_profiler SPApplicationsDataType" "Failed to get installed applications"
     
     if ($appInfo) {
         $currentApp = @{}
@@ -327,7 +327,7 @@ function Get-SoftwareInfo {
 function Get-DeviceInfo {
     param($sysInfo)
     
-    $usbDevices = Invoke-MacOSCommand "system_profiler SPUSBDataType" "Failed to get USB devices"
+    $usbDevices = Invoke-MacOSCommand "/usr/sbin/system_profiler SPUSBDataType" "Failed to get USB devices"
     $devices = @()
     
     if ($usbDevices) {
@@ -351,7 +351,7 @@ function Get-DeviceInfo {
 
 function Get-MacOSInventory {
     try {
-        $ComputerName = hostname
+        $ComputerName = /bin/hostname
         Write-Log "Starting macOS inventory collection for: $ComputerName" -Level INFO
         
         $sysInfo = Get-SystemInfo
