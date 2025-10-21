@@ -1,6 +1,112 @@
 #Requires -Version 5.1
-Set-StrictMode -Version Latest
 
+<#
+.SYNOPSIS
+    Enterprise PostgreSQL database discovery and inventory collection with multi-method authentication and comprehensive metadata extraction.
+
+.DESCRIPTION
+    This PowerShell script performs automated PostgreSQL instance discovery on Windows systems with intelligent
+    authentication profile cycling and detailed database metadata collection. Supports automatic installation
+    detection via registry scanning, service discovery, and environment path enumeration across all major
+    PostgreSQL distributions including EnterpriseDB, Crunchy Data, TimescaleDB, and community editions.
+
+    Leverages the native psql.exe client for robust database communications with support for multiple authentication
+    methods including trust authentication, Windows integrated authentication, password-based authentication, and
+    peer/ident protocols. Automatically discovers database server configuration, installed extensions, and license
+    types through system catalog queries and configuration file parsing.
+
+    Features sophisticated authentication method cycling to identify working connection strategies without manual
+    intervention. Implements intelligent timeout controls and retry logic to prevent connection hangs while
+    gathering comprehensive instance metadata including version information, cluster status, database sizes,
+    ownership details, and enterprise feature detection based on installed extensions and version strings.
+
+    Results are saved to timestamped JSON files with comprehensive database information suitable for license
+    compliance auditing, capacity planning, migration assessments, and infrastructure inventory management systems.
+
+.PARAMETER None
+    This script accepts no command-line parameters. All configuration is determined through automatic discovery
+    of PostgreSQL installations, running services, and system configuration.
+
+.EXAMPLE
+    .\inventory-postgresql.ps1
+
+    Discovers all PostgreSQL installations on local system using registry and path detection. Attempts connection
+    using multiple authentication profiles and collects complete instance metadata including databases, versions,
+    and license information. Results saved to timestamped JSON file in configured output directory.
+
+.EXAMPLE
+    .\inventory-postgresql.ps1 -Verbose
+
+    Executes full PostgreSQL discovery with detailed diagnostic output showing installation paths, connection
+    attempts, authentication method testing, and query execution status. Useful for troubleshooting connection
+    failures or understanding authentication configuration requirements.
+
+.INPUTS
+    None. This script does not accept pipeline input.
+
+.OUTPUTS
+    None to pipeline. Primary output is comprehensive database inventory information written to timestamped JSON file.
+
+    Output file structure:
+    - edition: Database edition (Community, Enterprise)
+    - product: Full version string from database server
+    - version: Numeric version identifier
+    - servername: Fully qualified domain name of host system
+    - isclustered: Boolean indicating replication/standby status
+    - licensetype: License classification (PostgreSQL License, EDB Commercial, etc.)
+    - numlicenses: License count or limitation description
+    - errordetails: Connection or authentication failure details
+    - instancename: Service name or registry instance identifier
+    - productlevel: Normalized version number
+    - responsetime: Discovery execution time in milliseconds
+    - connectionstatus: Authentication result (success, failure)
+    - databases: Array of database objects with name, size, owner metadata
+
+.NOTES
+    Version        : 1.0.0
+    Last Modified  : 2025-10-22
+    Prerequisite   : PowerShell 5.1+, PostgreSQL psql.exe client, administrative privileges for service queries
+
+    Performance Characteristics:
+    - Sequential authentication method testing with 10-second timeout per attempt
+    - Registry-based installation detection minimizes filesystem scanning overhead
+    - Connection result caching enables efficient multi-query execution per instance
+    - Memory-efficient streaming query execution prevents buffer overflow on large datasets
+    - Conditional query execution based on connection status reduces unnecessary network traffic
+
+    Security Features:
+    - No credential exposure in output files or verbose logging
+    - Environment variable isolation for password passing prevents credential leakage
+    - Temporary file cleanup ensures query content is not persisted to disk
+    - Process-based timeout enforcement prevents indefinite connection hangs
+    - Trust authentication attempted only on localhost to prevent unauthorized remote access
+
+    System Requirements:
+    - TCP port 5432 (or configured port) connectivity to PostgreSQL server
+    - PostgreSQL service running with accessible authentication configuration
+    - Read access to PostgreSQL system catalogs and configuration files
+    - Filesystem write access to C:\ProgramData\Aithentic\Uploads for output
+
+    Authentication Support:
+    - Trust authentication for localhost connections with empty password
+    - Windows integrated authentication via current user context
+    - Password-based authentication with common default credentials
+    - Peer/ident authentication using Windows username mapping
+    - Automatic pg_hba.conf configuration detection through method cycling
+
+    Edition Detection:
+    - EnterpriseDB Advanced Server and Extended editions via version string parsing
+    - Crunchy Data commercial distributions through vendor-specific markers
+    - TimescaleDB extensions and licensing models via pg_extension catalog
+    - Greenplum and Citus distributions through version signature analysis
+    - Commercial extension detection including EDB-specific catalog enhancements
+
+    Output files use agent UUID and timestamp for uniqueness and traceability.
+    Failed discoveries generate minimal records with categorized error details.
+    All database operations are read-only; no schema or data modifications performed.
+#>
+
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Get-SystemUUID {
@@ -411,16 +517,24 @@ function Get-PostgreSQLEdition {
         [string]$PsqlPath,
         
         [Parameter(Mandatory = $false)]
-        [int]$Port = 5432
+        [int]$Port = 5432,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$ConnectionConfig = $null
     )
     
     $query = "SELECT version();"
-    $versionString = Invoke-PostgreSQLQuery -PsqlPath $PsqlPath -Query $query -Port $Port
+    $versionString = Invoke-PostgreSQLQuery -PsqlPath $PsqlPath -Query $query -Port $Port -ConnectionConfig $ConnectionConfig
     
-    if ($versionString -match 'EnterpriseDB') {
+    if ([string]::IsNullOrWhiteSpace($versionString)) {
+        Write-Verbose "Unable to retrieve version string for edition detection"
+        return 'Community'
+    }
+    
+    if ($versionString -match 'EnterpriseDB|EDB Postgres') {
         return 'Enterprise'
     }
-    elseif ($versionString -match 'Crunchy|Timescale|Greenplum') {
+    elseif ($versionString -match 'Crunchy|Timescale|TimescaleDB|Greenplum|Citus') {
         return 'Enterprise'
     }
     else {
@@ -461,20 +575,80 @@ function Get-PostgreSQLLicenseInfo {
     param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
-        [string]$Edition
+        [string]$PsqlPath,
+        
+        [Parameter(Mandatory = $false)]
+        [int]$Port = 5432,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$ConnectionConfig = $null
     )
     
-    if ($Edition -eq 'Enterprise') {
+    $licenseType = 'PostgreSQL License'
+    $numLicenses = 'Unlimited'
+    
+    if ($null -eq $ConnectionConfig) {
         return @{
-            LicenseType = 'Commercial'
-            NumLicenses = 'Unknown'
+            LicenseType = $licenseType
+            NumLicenses = $numLicenses
         }
     }
-    else {
-        return @{
-            LicenseType = 'PostgreSQL License'
-            NumLicenses = 'Unlimited'
+    
+    $versionQuery = 'SELECT version();'
+    $versionResult = Invoke-PostgreSQLQuery -PsqlPath $PsqlPath -Query $versionQuery -Port $Port -ConnectionConfig $ConnectionConfig
+    
+    if (-not [string]::IsNullOrWhiteSpace($versionResult)) {
+        if ($versionResult -match 'EnterpriseDB|EDB Postgres Advanced Server|EDB Postgres Extended') {
+            $licenseType = 'EDB Commercial License'
+            $numLicenses = 'Per Core/Server'
         }
+        elseif ($versionResult -match 'Crunchy') {
+            $licenseType = 'Crunchy Data Commercial License'
+            $numLicenses = 'Subscription'
+        }
+        elseif ($versionResult -match 'Timescale|TimescaleDB') {
+            $licenseType = 'Timescale License'
+            $numLicenses = 'Community or Commercial'
+        }
+        elseif ($versionResult -match 'Greenplum') {
+            $licenseType = 'VMware Tanzu Greenplum License'
+            $numLicenses = 'Commercial'
+        }
+        elseif ($versionResult -match 'Citus') {
+            $licenseType = 'Citus License'
+            $numLicenses = 'Open Source or Commercial'
+        }
+    }
+    
+    $extensionsQuery = "SELECT extname, extversion FROM pg_extension WHERE extname IN ('edb_dblink_libpq', 'edb_dblink_oci', 'dbms_aq', 'edb_gen', 'timescaledb', 'citus');"
+    $extensionsResult = Invoke-PostgreSQLQuery -PsqlPath $PsqlPath -Query $extensionsQuery -Port $Port -ConnectionConfig $ConnectionConfig
+    
+    if (-not [string]::IsNullOrWhiteSpace($extensionsResult)) {
+        if ($extensionsResult -match 'edb_|dbms_') {
+            $licenseType = 'EDB Commercial License'
+            $numLicenses = 'Per Core/Server'
+        }
+        elseif ($extensionsResult -match 'timescaledb') {
+            $licenseType = 'Timescale License'
+        }
+        elseif ($extensionsResult -match 'citus') {
+            $licenseType = 'Citus License'
+        }
+    }
+    
+    $maxConnectionsQuery = 'SHOW max_connections;'
+    $maxConnResult = Invoke-PostgreSQLQuery -PsqlPath $PsqlPath -Query $maxConnectionsQuery -Port $Port -ConnectionConfig $ConnectionConfig
+    
+    if (-not [string]::IsNullOrWhiteSpace($maxConnResult)) {
+        $maxConn = 0
+        if ([int]::TryParse($maxConnResult, [ref]$maxConn) -and $licenseType -eq 'PostgreSQL License') {
+            $numLicenses = "Unlimited (max_connections: $maxConn)"
+        }
+    }
+    
+    return @{
+        LicenseType = $licenseType
+        NumLicenses = $numLicenses
     }
 }
 
@@ -548,7 +722,7 @@ function Get-PostgreSQLInfo {
             $connectionConfig = $connectionTest.Config
             Write-Verbose "Connected using: $($connectionTest.Method)"
             
-            $edition = Get-PostgreSQLEdition -PsqlPath $PsqlPath -Port $port
+            $edition = Get-PostgreSQLEdition -PsqlPath $PsqlPath -Port $port -ConnectionConfig $connectionConfig
             
             $portQuery = 'SHOW port;'
             $portResult = Invoke-PostgreSQLQuery -PsqlPath $PsqlPath -Query $portQuery -Port $port -ConnectionConfig $connectionConfig
@@ -599,7 +773,7 @@ function Get-PostgreSQLInfo {
         }
     }
     
-    $licenseInfo = Get-PostgreSQLLicenseInfo -Edition $edition
+    $licenseInfo = Get-PostgreSQLLicenseInfo -PsqlPath $PsqlPath -Port $port -ConnectionConfig $connectionConfig
     
     $endTime = Get-Date
     $responseTime = [int](($endTime - $startTime).TotalMilliseconds)
@@ -608,7 +782,7 @@ function Get-PostgreSQLInfo {
         Edition          = $edition
         Product          = $versionInfo.FullVersion
         Version          = $versionInfo.Version
-        ServerName       = "127.0.0.1"
+        ServerName       = Get-FQDN
         IsClustered      = $isClustered
         LicenseType      = $licenseInfo.LicenseType
         NumLicenses      = $licenseInfo.NumLicenses
