@@ -63,7 +63,7 @@
     - databases: Array of database objects with name, size, owner metadata
 
 .NOTES
-    Version        : 1.0.5
+    Version        : 1.0.15
     Last Modified  : 2025-10-22
     Prerequisite   : PowerShell 5.1+, PostgreSQL psql.exe client, administrative privileges for service queries
 
@@ -105,6 +105,11 @@
     Failed discoveries generate minimal records with categorized error details.
     All database operations are read-only; no schema or data modifications performed.
 #>
+
+#Requires -Version 5.1
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 #Requires -Version 5.1
 
@@ -182,7 +187,7 @@ function Find-PostgreSQLInstallations {
         $found = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue
         if ($null -ne $found) {
             foreach ($file in $found) {
-                if ($installations -notcontains $file.FullName) {
+                if (-not ($installations -contains $file.FullName)) {
                     $installations.Add($file.FullName)
                 }
             }
@@ -193,7 +198,8 @@ function Find-PostgreSQLInstallations {
     foreach ($pathEntry in $pathEnv) {
         if (-not [string]::IsNullOrWhiteSpace($pathEntry)) {
             $psqlInPath = Join-Path -Path $pathEntry.Trim() -ChildPath 'psql.exe'
-            if ((Test-Path -Path $psqlInPath -ErrorAction SilentlyContinue) -and ($installations -notcontains $psqlInPath)) {
+            if ((Test-Path -Path $psqlInPath -ErrorAction SilentlyContinue) -and 
+                -not ($installations -contains $psqlInPath)) {
                 $installations.Add($psqlInPath)
             }
         }
@@ -463,8 +469,10 @@ WHERE d.datistemplate = false;
         $parts = $line -split '\|'
         if ($parts.Count -ge 3) {
             $sizeGB = 0.0
-            if (-not [string]::IsNullOrWhiteSpace($parts[1]) -and $parts[1] -ne '0') {
-                $sizeBytes = [double]$parts[1]
+            $sizeBytes = 0.0
+            if (-not [string]::IsNullOrWhiteSpace($parts[1]) -and 
+                [double]::TryParse($parts[1], [ref]$sizeBytes) -and 
+                $sizeBytes -gt 0) {
                 $sizeGB = [math]::Round($sizeBytes / 1GB, 2)
             }
             
@@ -779,7 +787,15 @@ function Get-PostgreSQLInfo {
         }
     }
     
-    $licenseInfo = Get-PostgreSQLLicenseInfo -PsqlPath $PsqlPath -Port $port -ConnectionConfig $connectionConfig
+    $licenseInfo = if ($null -ne $connectionConfig) {
+        Get-PostgreSQLLicenseInfo -PsqlPath $PsqlPath -Port $port -ConnectionConfig $connectionConfig
+    }
+    else {
+        @{
+            LicenseType = 'PostgreSQL License'
+            NumLicenses = 'Unlimited'
+        }
+    }
     
     $endTime = Get-Date
     $responseTime = [int](($endTime - $startTime).TotalMilliseconds)
@@ -813,25 +829,26 @@ function Export-PostgreSQLInventory {
     $agentId = "agent-$uuid"
     $outputDir = 'C:\ProgramData\Aithentic\Uploads'
     
-    if (-not (Test-Path -Path $outputDir)) {
+    if (-not (Test-Path -Path $outputDir -PathType Container)) {
         try {
-            New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
+            $null = New-Item -Path $outputDir -ItemType Directory -Force -ErrorAction Stop
         }
         catch {
-            Write-Error "Failed to create output directory: $outputDir"
+            Write-Error "Failed to create output directory: $outputDir - $_"
             throw
         }
     }
     
-    $installations = @(Find-PostgreSQLInstallations)
+    $installations = Find-PostgreSQLInstallations
     
     if ($installations.Count -eq 0) {
         Write-Warning 'No PostgreSQL installations detected'
         return
     }
-    
+
+    Write-Verbose "Found $($installations.Count) PostgreSQL installation(s)"
     $psqlPath = $installations[0]
-    Write-Verbose "Using PostgreSQL client: $psqlPath"
+    Write-Verbose "Selected installation: $psqlPath"
     
     $inventoryData = Get-PostgreSQLInfo -PsqlPath $psqlPath
     
@@ -854,7 +871,7 @@ function Export-PostgreSQLInventory {
     $outputFile = Join-Path -Path $outputDir -ChildPath "${agentId}_postgresql-${timestamp}.json"
     
     try {
-        $json = $outputObject | ConvertTo-Json -Depth 10 -Compress:$false
+        $json = $outputObject | ConvertTo-Json -Depth 20 -Compress:$true
         Set-Content -Path $outputFile -Value $json -Encoding UTF8
         Write-Verbose "Inventory file generated: $outputFile"
         
