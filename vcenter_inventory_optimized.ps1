@@ -652,24 +652,10 @@ try {
                 $hostInventory = Get-HostInventoryData
 
                 if ($hostInventory.Count -gt 0) {
-                    # OPTIMIZATION: Batch file writes using runspaces or sequential with minimal overhead
-                    foreach ($vmHost in $hostInventory) {
-                        try {
-                            $uuid = $vmHost.UUID
-                            if ([string]::IsNullOrEmpty($uuid)) {
-                                Write-Warning "Skipping Host with empty UUID: $($vmHost.Name)"
-                                continue
-                            }
-
-                            $hostPath = Join-Path $outputDir "vcenter-$($uuid.ToLower())_${serverIdentifier}_${vcenterInstanceName}__host_info-${timestamp}.json"
-                            # OPTIMIZATION: Use direct JSON conversion and file write
-                            [System.IO.File]::WriteAllText($hostPath, ($vmHost | ConvertTo-Json -Depth 5 -Compress), [System.Text.Encoding]::UTF8)
-                        }
-                        catch {
-                            Write-Warning "Failed to export Host '$($vmHost.Name)': $($_.Exception.Message)"
-                        }
-                    }
-                    Write-ColorOutput "Host inventories exported: $($hostInventory.Count) files" -ForegroundColor Green
+                    # OPTIMIZATION: Write all hosts to a single file per vCenter instance
+                    $hostPath = Join-Path $outputDir "vcenter-${hostUuid}_${serverIdentifier}_${vcenterInstanceName}__host_info-${timestamp}.json"
+                    [System.IO.File]::WriteAllText($hostPath, ($hostInventory | ConvertTo-Json -Depth 5 -Compress), [System.Text.Encoding]::UTF8)
+                    Write-ColorOutput "Host inventory exported: $hostPath ($($hostInventory.Count) hosts)" -ForegroundColor Green
                 } else {
                     Write-Warning "No ESXi Hosts found in vCenter"
                 }
@@ -685,24 +671,10 @@ try {
                 $vmInventory = Get-VMInventoryData -ServerName $currentServer
 
                 if ($vmInventory.Count -gt 0) {
-                    # OPTIMIZATION: Batch file writes
-                    foreach ($vm in $vmInventory) {
-                        try {
-                            $uuid = $vm.UUID
-                            if ([string]::IsNullOrEmpty($uuid)) {
-                                Write-Warning "Skipping VM with empty UUID: $($vm.Name)"
-                                continue
-                            }
-
-                            $vmPath = Join-Path $outputDir "vcenter-$($uuid.ToLower())_${serverIdentifier}_${vcenterInstanceName}__vm_info-${timestamp}.json"
-                            # OPTIMIZATION: Use direct JSON conversion and file write
-                            [System.IO.File]::WriteAllText($vmPath, ($vm | ConvertTo-Json -Depth 5 -Compress), [System.Text.Encoding]::UTF8)
-                        }
-                        catch {
-                            Write-Warning "Failed to export VM '$($vm.Name)': $($_.Exception.Message)"
-                        }
-                    }
-                    Write-ColorOutput "VM inventories exported: $($vmInventory.Count) files" -ForegroundColor Green
+                    # OPTIMIZATION: Write all VMs to a single file per vCenter instance
+                    $vmPath = Join-Path $outputDir "vcenter-${hostUuid}_${serverIdentifier}_${vcenterInstanceName}__vm_info-${timestamp}.json"
+                    [System.IO.File]::WriteAllText($vmPath, ($vmInventory | ConvertTo-Json -Depth 5 -Compress), [System.Text.Encoding]::UTF8)
+                    Write-ColorOutput "VM inventory exported: $vmPath ($($vmInventory.Count) VMs)" -ForegroundColor Green
                 } else {
                     Write-Warning "No VMs found in vCenter"
                 }
