@@ -63,7 +63,7 @@
     - databases: Array of database objects with name, size, owner metadata
 
 .NOTES
-    Version        : 1.0.0
+    Version        : 1.0.5
     Last Modified  : 2025-10-22
     Prerequisite   : PowerShell 5.1+, PostgreSQL psql.exe client, administrative privileges for service queries
 
@@ -106,6 +106,8 @@
     All database operations are read-only; no schema or data modifications performed.
 #>
 
+#Requires -Version 5.1
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -116,7 +118,7 @@ function Get-SystemUUID {
     
     try {
         $uuid = (Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction SilentlyContinue).UUID
-        if ([string]::IsNullOrWhiteSpace($uuid)) {
+        if (-not $uuid) {
             $uuid = [System.Guid]::NewGuid().ToString()
         }
         return $uuid
@@ -133,7 +135,7 @@ function Get-FQDN {
     
     try {
         $fqdn = [System.Net.Dns]::GetHostEntry([string]::Empty).HostName
-        if ([string]::IsNullOrWhiteSpace($fqdn)) {
+        if (-not $fqdn) {
             $fqdn = $env:COMPUTERNAME
         }
         return $fqdn
@@ -148,7 +150,7 @@ function Find-PostgreSQLInstallations {
     [OutputType([System.Collections.ArrayList])]
     param()
     
-    $installations = New-Object System.Collections.ArrayList
+    $installations = [System.Collections.Generic.List[string]]::new()
     
     $registryPaths = @(
         'HKLM:\SOFTWARE\PostgreSQL\Installations',
@@ -163,7 +165,7 @@ function Find-PostgreSQLInstallations {
                 if (-not [string]::IsNullOrWhiteSpace($basePath)) {
                     $psqlPath = Join-Path -Path $basePath -ChildPath 'bin\psql.exe'
                     if (Test-Path -Path $psqlPath) {
-                        [void]$installations.Add($psqlPath)
+                        $installations.Add($psqlPath)
                     }
                 }
             }
@@ -181,7 +183,7 @@ function Find-PostgreSQLInstallations {
         if ($null -ne $found) {
             foreach ($file in $found) {
                 if ($installations -notcontains $file.FullName) {
-                    [void]$installations.Add($file.FullName)
+                    $installations.Add($file.FullName)
                 }
             }
         }
@@ -192,7 +194,7 @@ function Find-PostgreSQLInstallations {
         if (-not [string]::IsNullOrWhiteSpace($pathEntry)) {
             $psqlInPath = Join-Path -Path $pathEntry.Trim() -ChildPath 'psql.exe'
             if ((Test-Path -Path $psqlInPath -ErrorAction SilentlyContinue) -and ($installations -notcontains $psqlInPath)) {
-                [void]$installations.Add($psqlInPath)
+                $installations.Add($psqlInPath)
             }
         }
     }
@@ -211,8 +213,9 @@ function Test-PostgreSQLService {
         Port        = 5432
     }
     
-    $services = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue
-    $runningService = $services | Where-Object { $_.Status -eq 'Running' } | Select-Object -First 1
+    $runningService = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | 
+    Where-Object { $_.Status -eq 'Running' } | 
+    Select-Object -First 1
     
     if ($null -ne $runningService) {
         $result.IsRunning = $true
@@ -244,11 +247,6 @@ function Get-PostgreSQLConnectionMethods {
             Description = 'Windows Integrated Authentication'
             Arguments   = "-h 127.0.0.1 -p $Port -d postgres -t -A"
             EnvVars     = @{}
-        },
-        @{
-            Description = 'Trust Authentication (no password)'
-            Arguments   = "-h 127.0.0.1 -p $Port -U postgres -d postgres -t -A"
-            EnvVars     = @{ 'PGPASSWORD' = '' }
         },
         @{
             Description = 'Default postgres user'
@@ -291,6 +289,11 @@ function Invoke-PostgreSQLQuery {
         [Parameter(Mandatory = $false)]
         [hashtable]$ConnectionConfig = $null
     )
+
+    if (-not (Test-Path -Path $PsqlPath -PathType Leaf)) {
+        Write-Verbose "psql.exe not found at path: $PsqlPath"
+        return $null
+    }
     
     $tempFile = [System.IO.Path]::GetTempFileName()
     
@@ -346,13 +349,13 @@ function Invoke-PostgreSQLQuery {
         return $null
     }
     finally {
-        if ($null -ne $process -and -not $process.HasExited) {
-            try { $process.Kill() } catch { }
-        }
         if ($null -ne $process) {
+            if (-not $process.HasExited) {
+                try { $process.Kill() } catch { }
+            }
             $process.Dispose()
         }
-        if (Test-Path -Path $tempFile) {
+        if (Test-Path -Path $tempFile -ErrorAction SilentlyContinue) {
             Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
         }
     }
@@ -384,8 +387,8 @@ function Get-PostgreSQLVersion {
             $process.Kill()
             Write-Verbose "Version check timed out"
             return @{
-                Version     = '13.13'
-                FullVersion = 'PostgreSQL 13.13'
+                Version     = 'Unknown'
+                FullVersion = 'PostgreSQL (Version Unknown)'
             }
         }
         
@@ -404,13 +407,16 @@ function Get-PostgreSQLVersion {
     }
     finally {
         if ($null -ne $process) {
+            if (-not $process.HasExited) {
+                try { $process.Kill() } catch { }
+            }
             $process.Dispose()
         }
     }
     
     return @{
-        Version     = '13.13'
-        FullVersion = 'PostgreSQL 13.13'
+        Version     = 'Unknown'
+        FullVersion = 'PostgreSQL (Version Unknown)'
     }
 }
 
@@ -429,7 +435,7 @@ function Get-PostgreSQLDatabases {
         [hashtable]$ConnectionConfig = $null
     )
     
-    $databases = New-Object System.Collections.ArrayList
+    $databases = [System.Collections.Generic.List[PSObject]]::new()
     
     $query = @"
 SELECT d.datname, pg_database_size(d.datname), r.rolname as owner
@@ -446,7 +452,7 @@ WHERE d.datistemplate = false;
             Size_GB = 'Unknown'
             Owner   = 'postgres'
         }
-        [void]$databases.Add($defaultDb)
+        $databases.Add($defaultDb)
         return $databases
     }
     
@@ -467,7 +473,7 @@ WHERE d.datistemplate = false;
                 Size_GB = $sizeGB
                 Owner   = if ([string]::IsNullOrWhiteSpace($parts[2])) { 'postgres' } else { $parts[2].Trim() }
             }
-            [void]$databases.Add($db)
+            $databases.Add($db)
         }
     }
     
@@ -477,7 +483,7 @@ WHERE d.datistemplate = false;
             Size_GB = 'Unknown'
             Owner   = 'postgres'
         }
-        [void]$databases.Add($defaultDb)
+        $databases.Add($defaultDb)
     }
     
     return , $databases
