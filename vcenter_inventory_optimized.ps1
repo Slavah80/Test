@@ -668,6 +668,8 @@ try {
                 $vmInventory = Get-VMInventoryData -ServerName $currentServer
 
                 if ($vmInventory.Count -gt 0) {
+                    # Track UUIDs to detect and warn about duplicates
+                    $uuidTracker = @{}
 
                     foreach ($vm in $vmInventory) {
                         try {
@@ -677,7 +679,18 @@ try {
                                 continue
                             }
 
-                            $vmPath = Join-Path $outputDir "vcenter-$($uuid.ToLower())_${serverIdentifier}_${vcenterInstanceName}__vm_info-$($vm.name.ToLower() -replace '[\\/:*?"<>|\s]', '_')-${timestamp}.json"
+                            # Track duplicate UUIDs for warning
+                            if ($uuidTracker.ContainsKey($uuid)) {
+                                $uuidTracker[$uuid] += @($vm.Name)
+                                Write-Warning "Duplicate UUID detected: $uuid - VMs: $($uuidTracker[$uuid] -join ', ')"
+                            }
+                            else {
+                                $uuidTracker[$uuid] = @($vm.Name)
+                            }
+
+                            # Use UUID + VM name for unique identifier to handle duplicate UUIDs
+                            $sanitizedVmName = $vm.name.ToLower() -replace '[\\/:*?"<>|\s]', '_'
+                            $vmPath = Join-Path $outputDir "vcenter-$($uuid.ToLower())-${sanitizedVmName}_${serverIdentifier}_${vcenterInstanceName}__vm_info-${timestamp}.json"
                             [System.IO.File]::WriteAllText($vmPath, ($vm | ConvertTo-Json -Depth 5 -Compress), [System.Text.Encoding]::UTF8)
                         }
                         catch {
@@ -685,6 +698,15 @@ try {
                         }
                     }
                     Write-ColorOutput "VM inventories exported: $($vmInventory.Count) files" -ForegroundColor Green
+
+                    # Report on duplicate UUIDs found
+                    $duplicates = $uuidTracker.GetEnumerator() | Where-Object { $_.Value.Count -gt 1 }
+                    if ($duplicates) {
+                        Write-ColorOutput "Found $($duplicates.Count) duplicate UUID(s) across VMs:" -ForegroundColor Yellow
+                        foreach ($dup in $duplicates) {
+                            Write-ColorOutput "  UUID $($dup.Key): $($dup.Value -join ', ')" -ForegroundColor Yellow
+                        }
+                    }
                 }
                 else {
                     Write-Warning "No VMs found in vCenter"
