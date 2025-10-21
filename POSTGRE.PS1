@@ -63,7 +63,7 @@
     - databases: Array of database objects with name, size, owner metadata
 
 .NOTES
-    Version        : 1.0.15
+    Version        : 1.0.17
     Last Modified  : 2025-10-22
     Prerequisite   : PowerShell 5.1+, PostgreSQL psql.exe client, administrative privileges for service queries
 
@@ -108,10 +108,8 @@
 
 #Requires -Version 5.1
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-#Requires -Version 5.1
+[CmdletBinding()]
+param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
