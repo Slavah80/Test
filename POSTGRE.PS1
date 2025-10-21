@@ -341,7 +341,7 @@ WHERE d.datistemplate = false;
             Owner   = 'postgres'
         }
         [void]$databases.Add($defaultDb)
-        return , $databases
+        return $databases
     }
     
     $lines = $result -split "`n"
@@ -577,26 +577,26 @@ function Get-PostgreSQLInfo {
                 }
             }
             
-            $databases = @(Get-PostgreSQLDatabases -PsqlPath $PsqlPath -Port $port -ConnectionConfig $connectionConfig)
+            $databases = Get-PostgreSQLDatabases -PsqlPath $PsqlPath -Port $port -ConnectionConfig $connectionConfig
             $isClustered = Test-PostgreSQLClustering -PsqlPath $PsqlPath -Port $port -ConnectionConfig $connectionConfig
         }
         else {
             $errorDetails = 'No database access - authentication failed'
             Write-Verbose "All connection methods failed. Check pg_hba.conf for allowed authentication methods."
-            $databases = @([PSCustomObject]@{
-                    Name    = 'postgres'
-                    Size_GB = 'Unknown'
-                    Owner   = 'postgres'
-                })
+            $databases = [PSCustomObject]@{
+                Name    = 'postgres'
+                Size_GB = 'Unknown'
+                Owner   = 'postgres'
+            }
         }
     }
     else {
         $errorDetails = 'PostgreSQL service not running'
-        $databases = @([PSCustomObject]@{
-                Name    = 'postgres'
-                Size_GB = 'Unknown'
-                Owner   = 'postgres'
-            })
+        $databases = [PSCustomObject]@{
+            Name    = 'postgres'
+            Size_GB = 'Unknown'
+            Owner   = 'postgres'
+        }
     }
     
     $licenseInfo = Get-PostgreSQLLicenseInfo -Edition $edition
