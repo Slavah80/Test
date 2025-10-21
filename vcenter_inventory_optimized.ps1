@@ -9,16 +9,16 @@ param(
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
     [string[]]$ComputerName = @(
-        "dc1plxvcs001.nr.ad.newellco.com",  # DC1 (Dev/Test) - 10.22.32.20
-        "dc2plxvcs001.nr.ad.newellco.com",  # DC2 (Prod) - 10.24.96.20
-        "dc2plxvcs004.nr.ad.newellco.com",  # Oracle Apps (Prod and Dev) - 10.25.105.1
-        "dc2plxvcs003.nr.ad.newellco.com",  # Oracle DB (Prod and Dev) - 10.25.105.0
+        #"dc1plxvcs001.nr.ad.newellco.com",  # DC1 (Dev/Test) - 10.22.32.20
+        #"dc2plxvcs001.nr.ad.newellco.com",  # DC2 (Prod) - 10.24.96.20
+        #"dc2plxvcs004.nr.ad.newellco.com",  # Oracle Apps (Prod and Dev) - 10.25.105.1
+        #"dc2plxvcs003.nr.ad.newellco.com",  # Oracle DB (Prod and Dev) - 10.25.105.0
         "dc2pwnvcs002.nr.ad.newellco.com"   # Edge (All remote sites) - 10.24.96.21
     ),
 
     [Parameter(Mandatory = $false)]
     [ValidateScript({ Test-Path $_ -PathType Container })]
-    [string]$OutputFolderPath = "C:\Program Files\AithenticStandaloneAgent\Service\uploads",
+    [string]$OutputFolderPath = "C:\Temp\uploads",
 
     [Parameter(Mandatory = $false)]
     [System.Management.Automation.PSCredential]$Credential
@@ -29,7 +29,7 @@ $ProgressPreference = 'Continue'
 
 function Test-PowerCLIModule {
     try {
-        # Import the necessary PowerCLI modules that are already installed
+
         $modulesToImport = @(
             'VMware.VimAutomation.Core',
             'VMware.VimAutomation.Common',
@@ -42,7 +42,8 @@ function Test-PowerCLIModule {
             if (Get-Module -ListAvailable -Name $module) {
                 Import-Module $module -ErrorAction Stop
                 Write-Verbose "Imported module: $module"
-            } else {
+            }
+            else {
                 Write-Warning "Module $module not found, but continuing..."
             }
         }
@@ -93,7 +94,7 @@ function Get-VMInventoryData {
     try {
         Write-ColorOutput "Retrieving Virtual Machine inventory..." -ForegroundColor Yellow
 
-        # Get all VMs at once
+
         $vms = Get-VM -ErrorAction Stop
         $totalVMs = $vms.Count
 
@@ -104,7 +105,6 @@ function Get-VMInventoryData {
 
         Write-ColorOutput "Processing $totalVMs VMs..." -ForegroundColor Yellow
 
-        # OPTIMIZATION: Batch retrieve all VM views at once
         $vmViews = @{}
         $allViews = Get-View -VIObject $vms -ErrorAction SilentlyContinue
         for ($i = 0; $i -lt $vms.Count; $i++) {
@@ -113,25 +113,22 @@ function Get-VMInventoryData {
             }
         }
 
-        # OPTIMIZATION: Batch retrieve all VMGuest info at once
         $vmGuests = @{}
         $allGuests = $vms | Get-VMGuest -ErrorAction SilentlyContinue
         foreach ($guest in $allGuests) {
             $vmGuests[$guest.VMId] = $guest
         }
 
-        # OPTIMIZATION: Create datastore cache to avoid repeated Get-Datastore calls
         $datastoreCache = @{}
         $allDatastores = Get-Datastore -ErrorAction SilentlyContinue
         foreach ($ds in $allDatastores) {
             $datastoreCache[$ds.Id] = $ds.Name
         }
 
-        # OPTIMIZATION: Batch retrieve all hardware and network info
         $allHardware = @{}
         $allNetwork = @{}
 
-        # Process all VMs in parallel using ForEach-Object -Parallel (PS 7+) or sequentially but optimized
+
         $vmData = @()
         $currentVM = 0
 
@@ -141,40 +138,41 @@ function Get-VMInventoryData {
             Write-Progress -Activity "Processing VMs" -Status "Processing $($vm.Name) ($currentVM/$totalVMs)" -PercentComplete $percentComplete
 
             try {
-                # Use cached view
+
                 $vmView = $vmViews[$vm.Id]
 
-                # Use cached guest
+
                 $vmGuest = $vmGuests[$vm.Id]
 
-                # Get hardware and network (these are relatively fast, per-VM calls)
                 if (-not $allHardware.ContainsKey($vm.Id)) {
                     $vmHardware = $vm | Get-HardDisk -ErrorAction SilentlyContinue
                     $allHardware[$vm.Id] = $vmHardware
-                } else {
+                }
+                else {
                     $vmHardware = $allHardware[$vm.Id]
                 }
 
                 if (-not $allNetwork.ContainsKey($vm.Id)) {
                     $vmNetwork = $vm | Get-NetworkAdapter -ErrorAction SilentlyContinue
                     $allNetwork[$vm.Id] = $vmNetwork
-                } else {
+                }
+                else {
                     $vmNetwork = $allNetwork[$vm.Id]
                 }
 
-                # Build disk array
+  
                 $diskArray = @()
                 foreach ($disk in $vmHardware) {
                     $diskArray += @{
-                        name          = $disk.Name
-                        capacity_gb   = [math]::Round($disk.CapacityGB, 2)
-                        filename      = $disk.Filename
+                        name           = $disk.Name
+                        capacity_gb    = [math]::Round($disk.CapacityGB, 2)
+                        filename       = $disk.Filename
                         storage_format = $disk.StorageFormat
-                        disk_type     = $disk.DiskType
+                        disk_type      = $disk.DiskType
                     }
                 }
 
-                # Build network array
+
                 $networkArray = @()
                 foreach ($nic in $vmNetwork) {
                     $networkArray += @{
@@ -186,7 +184,6 @@ function Get-VMInventoryData {
                     }
                 }
 
-                # OPTIMIZATION: Use cached datastore names
                 $datastoreNames = @()
                 foreach ($dsId in $vm.DatastoreIdList) {
                     if ($datastoreCache.ContainsKey($dsId)) {
@@ -251,7 +248,7 @@ function Get-HostInventoryData {
             return @()
         }
 
-        # OPTIMIZATION: Batch retrieve all host views
+
         $hostViews = @{}
         $allHostViews = Get-View -VIObject $hosts -ErrorAction SilentlyContinue
         for ($i = 0; $i -lt $hosts.Count; $i++) {
@@ -260,7 +257,7 @@ function Get-HostInventoryData {
             }
         }
 
-        # OPTIMIZATION: Pre-fetch all datastores once
+
         $allDatastores = Get-Datastore -ErrorAction SilentlyContinue
 
         $hostData = @()
@@ -269,12 +266,12 @@ function Get-HostInventoryData {
             try {
                 $hostView = $hostViews[$vmHost.Id]
 
-                # Get network info (keep these as they're per-host specific)
+
                 $hostVirtualSwitches = $vmHost | Get-VirtualSwitch -Standard -ErrorAction SilentlyContinue
                 $hostVMKernelAdapters = $vmHost | Get-VMHostNetworkAdapter -VMKernel -ErrorAction SilentlyContinue
                 $hostPhysicalAdapters = $vmHost | Get-VMHostNetworkAdapter -Physical -ErrorAction SilentlyContinue
 
-                # OPTIMIZATION: Filter datastores for this host instead of calling Get-Datastore per host
+
                 $datastoreArray = @()
                 $hostDatastores = $allDatastores | Where-Object { $_.ExtensionData.Host.Key -contains $vmHost.ExtensionData.MoRef.Value }
 
@@ -289,34 +286,34 @@ function Get-HostInventoryData {
                 }
 
                 $hostObject = @{
-                    name              = $vmHost.Name
-                    uuid              = $vmHost.ExtensionData.Hardware.SystemInfo.Uuid
-                    connection_state  = $vmHost.ConnectionState
-                    power_state       = $vmHost.PowerState
-                    version           = $vmHost.Version
-                    build             = $vmHost.Build
-                    manufacturer      = $vmHost.Manufacturer
-                    model             = $vmHost.Model
-                    processor_type    = $vmHost.ProcessorType
-                    num_cpu           = $vmHost.NumCpu
-                    cpu_total_mhz     = $vmHost.CpuTotalMhz
-                    cpu_usage_mhz     = $vmHost.CpuUsageMhz
-                    memory_total_gb   = [math]::Round($vmHost.MemoryTotalGB, 2)
-                    memory_usage_gb   = [math]::Round($vmHost.MemoryUsageGB, 2)
-                    max_evc_mode      = if ($vmHost.MaxEVCMode) { $vmHost.MaxEVCMode } else { 'N/A' }
-                    cluster           = if ($vmHost.Parent.Name) { $vmHost.Parent.Name } else { 'N/A' }
-                    datacenter        = $vmHost.Datacenter.Name
-                    network_info      = @{
+                    name             = $vmHost.Name
+                    uuid             = $vmHost.ExtensionData.Hardware.SystemInfo.Uuid
+                    connection_state = $vmHost.ConnectionState
+                    power_state      = $vmHost.PowerState
+                    version          = $vmHost.Version
+                    build            = $vmHost.Build
+                    manufacturer     = $vmHost.Manufacturer
+                    model            = $vmHost.Model
+                    processor_type   = $vmHost.ProcessorType
+                    num_cpu          = $vmHost.NumCpu
+                    cpu_total_mhz    = $vmHost.CpuTotalMhz
+                    cpu_usage_mhz    = $vmHost.CpuUsageMhz
+                    memory_total_gb  = [math]::Round($vmHost.MemoryTotalGB, 2)
+                    memory_usage_gb  = [math]::Round($vmHost.MemoryUsageGB, 2)
+                    max_evc_mode     = if ($vmHost.MaxEVCMode) { $vmHost.MaxEVCMode } else { 'N/A' }
+                    cluster          = if ($vmHost.Parent.Name) { $vmHost.Parent.Name } else { 'N/A' }
+                    datacenter       = $vmHost.Datacenter.Name
+                    network_info     = @{
                         virtual_switches = ($hostVirtualSwitches | Measure-Object).Count
                         vmkernel_ports   = ($hostVMKernelAdapters | Measure-Object).Count
                         physical_nics    = ($hostPhysicalAdapters | Measure-Object).Count
                     }
-                    datastores        = $datastoreArray
-                    maintenance_mode  = $vmHost.ConnectionState -eq 'Maintenance'
-                    license_key       = if ($vmHost.LicenseKey) { $vmHost.LicenseKey } else { 'N/A' }
-                    time_zone         = if ($vmHost.TimeZone) { $vmHost.TimeZone.Name } else { 'N/A' }
-                    overall_status    = if ($hostView.OverallStatus) { $hostView.OverallStatus } else { 'N/A' }
-                    config_status     = if ($hostView.ConfigStatus) { $hostView.ConfigStatus } else { 'N/A' }
+                    datastores       = $datastoreArray
+                    maintenance_mode = $vmHost.ConnectionState -eq 'Maintenance'
+                    license_key      = if ($vmHost.LicenseKey) { $vmHost.LicenseKey } else { 'N/A' }
+                    time_zone        = if ($vmHost.TimeZone) { $vmHost.TimeZone.Name } else { 'N/A' }
+                    overall_status   = if ($hostView.OverallStatus) { $hostView.OverallStatus } else { 'N/A' }
+                    config_status    = if ($hostView.ConfigStatus) { $hostView.ConfigStatus } else { 'N/A' }
                 }
 
                 $hostData += $hostObject
@@ -351,7 +348,6 @@ function Get-InfrastructureInventoryData {
             vcenter_info         = @{}
         }
 
-        # OPTIMIZATION: Get all infrastructure components at once
         $clusters = Get-Cluster -ErrorAction SilentlyContinue
         $datastores = Get-Datastore -ErrorAction SilentlyContinue
         $networks = Get-VirtualNetwork -ErrorAction SilentlyContinue
@@ -360,7 +356,6 @@ function Get-InfrastructureInventoryData {
         $folders = Get-Folder -ErrorAction SilentlyContinue
         $datacenters = Get-Datacenter -ErrorAction SilentlyContinue
 
-        # OPTIMIZATION: Create lookup tables for counts to avoid repeated Get-* calls
         $clusterHostCount = @{}
         $clusterVMCount = @{}
         $dcClusterCount = @{}
@@ -368,17 +363,17 @@ function Get-InfrastructureInventoryData {
         $dcVMCount = @{}
         $dcDatastoreCount = @{}
 
-        # Pre-calculate all hosts and VMs
+
         $allHosts = Get-VMHost -ErrorAction SilentlyContinue
         $allVMs = Get-VM -ErrorAction SilentlyContinue
 
-        # Build cluster lookup tables
+
         foreach ($cluster in $clusters) {
             $clusterHostCount[$cluster.Id] = ($allHosts | Where-Object { $_.ParentId -eq $cluster.Id }).Count
             $clusterVMCount[$cluster.Id] = ($allVMs | Where-Object { $_.VMHost.ParentId -eq $cluster.Id }).Count
         }
 
-        # Build datacenter lookup tables
+
         foreach ($dc in $datacenters) {
             $dcClusters = $clusters | Where-Object { $_.Uid -like "*$($dc.Name)*" }
             $dcClusterCount[$dc.Id] = $dcClusters.Count
@@ -387,7 +382,7 @@ function Get-InfrastructureInventoryData {
             $dcDatastoreCount[$dc.Id] = ($datastores | Where-Object { $_.Uid -like "*$($dc.Name)*" }).Count
         }
 
-        # Clusters
+
         foreach ($cluster in $clusters) {
             $infraData.clusters += @{
                 name                 = $cluster.Name
@@ -402,7 +397,6 @@ function Get-InfrastructureInventoryData {
             }
         }
 
-        # Datastores
         foreach ($datastore in $datastores) {
             $infraData.datastores += @{
                 name                 = $datastore.Name
@@ -417,7 +411,7 @@ function Get-InfrastructureInventoryData {
             }
         }
 
-        # Networks
+
         foreach ($network in $networks) {
             $infraData.networks += @{
                 name                = $network.Name
@@ -430,7 +424,7 @@ function Get-InfrastructureInventoryData {
             }
         }
 
-        # VirtualSwitches (Standard switches only to avoid distributed switch warnings)
+
         foreach ($VirtualSwitchItem in $virtualSwitches) {
             $infraData.virtual_switches += @{
                 name      = $VirtualSwitchItem.Name
@@ -439,7 +433,6 @@ function Get-InfrastructureInventoryData {
             }
         }
 
-        # Resource Pools
         foreach ($rp in $resourcePools) {
             $infraData.resource_pools += @{
                 name                = $rp.Name
@@ -452,7 +445,7 @@ function Get-InfrastructureInventoryData {
             }
         }
 
-        # Folders
+
         foreach ($folder in $folders) {
             $infraData.folders += @{
                 name   = $folder.Name
@@ -462,7 +455,7 @@ function Get-InfrastructureInventoryData {
             }
         }
 
-        # Datacenters
+
         foreach ($dc in $datacenters) {
             $infraData.datacenters += @{
                 name           = $dc.Name
@@ -474,7 +467,7 @@ function Get-InfrastructureInventoryData {
             }
         }
 
-        # Distributed Switches
+
         try {
             $distributedSwitches = Get-VDSwitch -ErrorAction SilentlyContinue
             foreach ($vds in $distributedSwitches) {
@@ -486,8 +479,8 @@ function Get-InfrastructureInventoryData {
                     mtu            = $vds.Mtu
                     datacenter     = if ($vds.Datacenter) { $vds.Datacenter.Name } else { 'N/A' }
                     extension_data = @{
-                        config_version        = $vds.ExtensionData.Config.ConfigVersion
-                        num_standalone_ports  = $vds.ExtensionData.Config.NumStandalonePorts
+                        config_version       = $vds.ExtensionData.Config.ConfigVersion
+                        num_standalone_ports = $vds.ExtensionData.Config.NumStandalonePorts
                     }
                 }
             }
@@ -496,7 +489,7 @@ function Get-InfrastructureInventoryData {
             Write-Warning "Could not retrieve Distributed Switches: $($_.Exception.Message)"
         }
 
-        # Port Groups (both standard and distributed)
+
         try {
             $portGroups = Get-VirtualPortGroup -ErrorAction SilentlyContinue
             foreach ($pg in $portGroups) {
@@ -508,7 +501,7 @@ function Get-InfrastructureInventoryData {
                 }
             }
 
-            # Add Distributed Port Groups
+
             $distributedPortGroups = Get-VDPortgroup -ErrorAction SilentlyContinue
             foreach ($dpg in $distributedPortGroups) {
                 $infraData.port_groups += @{
@@ -525,7 +518,7 @@ function Get-InfrastructureInventoryData {
             Write-Warning "Could not retrieve Port Groups: $($_.Exception.Message)"
         }
 
-        # vCenter Server Information
+
         try {
             $vCenterService = $Global:DefaultVIServers | Select-Object -First 1
             if ($vCenterService) {
@@ -533,23 +526,23 @@ function Get-InfrastructureInventoryData {
                 $aboutInfo = $serviceInstance.Content.About
 
                 $infraData.vcenter_info = @{
-                    name                      = $vCenterService.Name
-                    version                   = $aboutInfo.Version
-                    build                     = $aboutInfo.Build
-                    full_name                 = $aboutInfo.FullName
-                    api_version               = $aboutInfo.ApiVersion
-                    api_type                  = $aboutInfo.ApiType
-                    license_product_name      = $aboutInfo.LicenseProductName
-                    license_product_version   = $aboutInfo.LicenseProductVersion
-                    instance_uuid             = $aboutInfo.InstanceUuid
-                    os_type                   = $aboutInfo.OsType
-                    product_line_id           = $aboutInfo.ProductLineId
-                    vendor                    = $aboutInfo.Vendor
-                    locale_version            = $aboutInfo.LocaleVersion
-                    locale_build              = $aboutInfo.LocaleBuild
-                    is_connected              = $vCenterService.IsConnected
-                    service_uri               = $vCenterService.ServiceUri
-                    port                      = $vCenterService.Port
+                    name                    = $vCenterService.Name
+                    version                 = $aboutInfo.Version
+                    build                   = $aboutInfo.Build
+                    full_name               = $aboutInfo.FullName
+                    api_version             = $aboutInfo.ApiVersion
+                    api_type                = $aboutInfo.ApiType
+                    license_product_name    = $aboutInfo.LicenseProductName
+                    license_product_version = $aboutInfo.LicenseProductVersion
+                    instance_uuid           = $aboutInfo.InstanceUuid
+                    os_type                 = $aboutInfo.OsType
+                    product_line_id         = $aboutInfo.ProductLineId
+                    vendor                  = $aboutInfo.Vendor
+                    locale_version          = $aboutInfo.LocaleVersion
+                    locale_build            = $aboutInfo.LocaleBuild
+                    is_connected            = $vCenterService.IsConnected
+                    service_uri             = $vCenterService.ServiceUri
+                    port                    = $vCenterService.Port
                 }
             }
         }
@@ -580,20 +573,18 @@ try {
 
     if (-not $Credential) {
         $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList 'nr.ad.newellco.com\svcVCenterAI', (ConvertTo-SecureString "KfAhi!#6z``bdMj?'I!" -AsPlainText -Force)
-        #$Credential = Get-Credential -Message "Enter vCenter credentials"
+
     }
 
-    # Initialize overall summary tracking
     $overallSummary = @{
         total_servers_processed = 0
-        successful_servers = @()
-        failed_servers = @()
-        collection_start_time = Get-Date
-        total_vms_all_servers = 0
+        successful_servers      = @()
+        failed_servers          = @()
+        collection_start_time   = Get-Date
+        total_vms_all_servers   = 0
         total_hosts_all_servers = 0
     }
 
-    # Loop through each computer name
     foreach ($currentServer in $ComputerName) {
         Write-ColorOutput "Processing vCenter Server: $currentServer" -ForegroundColor Cyan
         $overallSummary.total_servers_processed++
@@ -605,26 +596,22 @@ try {
             Write-ColorOutput "Version: $($connection.Version)" -ForegroundColor White
             Write-ColorOutput "Build: $($connection.Build)" -ForegroundColor White
 
-            # Create server-specific identifier for file naming
+
             $serverIdentifier = $currentServer -replace '[\\/:*?"<>|]', '_' -replace '\.', '_'
             $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
             $outputDir = $OutputFolderPath
 
-            # Get the UUID of the host generating this inventory
             try {
                 $hostUuid = (Get-CimInstance -Class Win32_ComputerSystemProduct).UUID.ToLower()
             }
             catch {
-                # Fallback to hostname-based identifier if hardware UUID is not available
                 $hostUuid = ([System.Environment]::MachineName + "-" + (Get-Date -Format 'yyyyMMdd')).ToLower()
             }
 
-            # Initialize inventories with empty arrays for error handling
             $vmInventory = @()
             $hostInventory = @()
             $infraInventory = @{}
 
-            # Collect Infrastructure Inventory (vCenter and infrastructure components first)
             try {
                 Write-ColorOutput "Gathering vCenter and Infrastructure inventory..." -ForegroundColor Yellow
                 $infraInventory = Get-InfrastructureInventoryData
@@ -638,21 +625,17 @@ try {
                 }
             }
 
-            # Extract vCenter instance name for use in filenames
             $vcenterInstanceName = "unknown"
             if ($infraInventory.vcenter_info -and $infraInventory.vcenter_info.full_name) {
-                # Sanitize the vCenter full name for use in filenames
                 $vcenterInstanceName = $infraInventory.vcenter_info.full_name -replace '[\\/:*?"<>|]', '_' -replace '\s+', '_'
                 $vcenterInstanceName = $vcenterInstanceName.ToLower()
             }
 
-            # Collect Host Inventory (ESXi hosts second)
             try {
                 Write-ColorOutput "Gathering ESXi Host inventory..." -ForegroundColor Yellow
                 $hostInventory = Get-HostInventoryData
 
                 if ($hostInventory.Count -gt 0) {
-                    # OPTIMIZATION: Batch file writes using runspaces or sequential with minimal overhead
                     foreach ($vmHost in $hostInventory) {
                         try {
                             $uuid = $vmHost.UUID
@@ -661,8 +644,8 @@ try {
                                 continue
                             }
 
-                            $hostPath = Join-Path $outputDir "vcenter-$($uuid.ToLower())_${serverIdentifier}_${vcenterInstanceName}__host_info-${timestamp}.json"
-                            # OPTIMIZATION: Use direct JSON conversion and file write
+                            $hostPath = Join-Path $outputDir "vcenter-$($uuid.ToLower())_${serverIdentifier}_${vcenterInstanceName}__host_info-$($vmHost.name.ToLower() -replace '[\\/:*?"<>|\s]', '_')-${timestamp}.json"
+                            
                             [System.IO.File]::WriteAllText($hostPath, ($vmHost | ConvertTo-Json -Depth 5 -Compress), [System.Text.Encoding]::UTF8)
                         }
                         catch {
@@ -670,7 +653,8 @@ try {
                         }
                     }
                     Write-ColorOutput "Host inventories exported: $($hostInventory.Count) files" -ForegroundColor Green
-                } else {
+                }
+                else {
                     Write-Warning "No ESXi Hosts found in vCenter"
                 }
             }
@@ -679,13 +663,12 @@ try {
                 $hostInventory = @()
             }
 
-            # Collect VM Inventory (Virtual Machines last)
             try {
                 Write-ColorOutput "Gathering Virtual Machine inventory..." -ForegroundColor Yellow
                 $vmInventory = Get-VMInventoryData -ServerName $currentServer
 
                 if ($vmInventory.Count -gt 0) {
-                    # OPTIMIZATION: Batch file writes
+
                     foreach ($vm in $vmInventory) {
                         try {
                             $uuid = $vm.UUID
@@ -694,8 +677,7 @@ try {
                                 continue
                             }
 
-                            $vmPath = Join-Path $outputDir "vcenter-$($uuid.ToLower())_${serverIdentifier}_${vcenterInstanceName}__vm_info-${timestamp}.json"
-                            # OPTIMIZATION: Use direct JSON conversion and file write
+                            $vmPath = Join-Path $outputDir "vcenter-$($uuid.ToLower())_${serverIdentifier}_${vcenterInstanceName}__vm_info-$($vm.name.ToLower() -replace '[\\/:*?"<>|\s]', '_')-${timestamp}.json"
                             [System.IO.File]::WriteAllText($vmPath, ($vm | ConvertTo-Json -Depth 5 -Compress), [System.Text.Encoding]::UTF8)
                         }
                         catch {
@@ -703,7 +685,8 @@ try {
                         }
                     }
                     Write-ColorOutput "VM inventories exported: $($vmInventory.Count) files" -ForegroundColor Green
-                } else {
+                }
+                else {
                     Write-Warning "No VMs found in vCenter"
                 }
             }
@@ -712,12 +695,12 @@ try {
                 $vmInventory = @()
             }
 
-            # Save complete infrastructure as one file
+
             $infraPath = Join-Path $outputDir "vcenter-${hostUuid}_${serverIdentifier}_${vcenterInstanceName}__infra_info-${timestamp}.json"
             [System.IO.File]::WriteAllText($infraPath, ($infraInventory | ConvertTo-Json -Depth 6 -Compress), [System.Text.Encoding]::UTF8)
             Write-ColorOutput "Infrastructure inventory exported: $infraPath" -ForegroundColor Green
 
-            # Save individual infrastructure components as separate files for easier analysis
+
             if ($infraInventory.clusters.Count -gt 0) {
                 $clustersPath = Join-Path $outputDir "vcenter-${hostUuid}_${serverIdentifier}_${vcenterInstanceName}__cluster_info-${timestamp}.json"
                 [System.IO.File]::WriteAllText($clustersPath, ($infraInventory.clusters | ConvertTo-Json -Depth 4 -Compress), [System.Text.Encoding]::UTF8)
@@ -761,24 +744,24 @@ try {
             }
 
             $summary = @{
-                collection_time   = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
-                vcenter_server    = $currentServer
-                vcenter_version   = $connection.Version
-                vcenter_build     = $connection.Build
-                total_vms         = $vmInventory.Count
-                total_hosts       = $hostInventory.Count
-                total_clusters    = $infraInventory.clusters.Count
-                total_datastores  = $infraInventory.datastores.Count
-                total_datacenters = $infraInventory.datacenters.Count
-                total_networks    = $infraInventory.networks.Count
-                total_virtual_switches = $infraInventory.virtual_switches.Count
+                collection_time            = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+                vcenter_server             = $currentServer
+                vcenter_version            = $connection.Version
+                vcenter_build              = $connection.Build
+                total_vms                  = $vmInventory.Count
+                total_hosts                = $hostInventory.Count
+                total_clusters             = $infraInventory.clusters.Count
+                total_datastores           = $infraInventory.datastores.Count
+                total_datacenters          = $infraInventory.datacenters.Count
+                total_networks             = $infraInventory.networks.Count
+                total_virtual_switches     = $infraInventory.virtual_switches.Count
                 total_distributed_switches = $infraInventory.distributed_switches.Count
-                total_port_groups  = $infraInventory.port_groups.Count
-                total_resource_pools = $infraInventory.resource_pools.Count
-                total_folders     = $infraInventory.folders.Count
-                collection_status = @{
-                    vms_collected = if ($vmInventory.Count -gt 0) { "Success" } else { "No VMs found" }
-                    hosts_collected = if ($hostInventory.Count -gt 0) { "Success" } else { "No Hosts found" }
+                total_port_groups          = $infraInventory.port_groups.Count
+                total_resource_pools       = $infraInventory.resource_pools.Count
+                total_folders              = $infraInventory.folders.Count
+                collection_status          = @{
+                    vms_collected            = if ($vmInventory.Count -gt 0) { "Success" } else { "No VMs found" }
+                    hosts_collected          = if ($hostInventory.Count -gt 0) { "Success" } else { "No Hosts found" }
                     infrastructure_collected = if ($infraInventory) { "Success" } else { "Failed" }
                 }
             }
@@ -787,13 +770,12 @@ try {
             [System.IO.File]::WriteAllText($summaryPath, ($summary | ConvertTo-Json -Depth 3), [System.Text.Encoding]::UTF8)
             Write-ColorOutput "Summary report exported: $summaryPath" -ForegroundColor Green
 
-            # Update overall summary
             $overallSummary.total_vms_all_servers += $vmInventory.Count
             $overallSummary.total_hosts_all_servers += $hostInventory.Count
             $overallSummary.successful_servers += @{
-                server_name = $currentServer
-                vms_count = $vmInventory.Count
-                hosts_count = $hostInventory.Count
+                server_name     = $currentServer
+                vms_count       = $vmInventory.Count
+                hosts_count     = $hostInventory.Count
                 collection_time = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
             }
 
@@ -802,7 +784,7 @@ try {
             Write-ColorOutput "Total Hosts processed: $($hostInventory.Count)" -ForegroundColor White
             Write-ColorOutput "All inventory files saved to: $outputDir" -ForegroundColor White
 
-            # Disconnect from current vCenter before processing next one
+
             if ($Global:DefaultVIServers.Count -gt 0) {
                 Write-ColorOutput "Disconnecting from $currentServer..." -ForegroundColor Yellow
                 Disconnect-VIServer -Server $currentServer -Confirm:$false -ErrorAction SilentlyContinue
@@ -811,12 +793,12 @@ try {
         catch {
             Write-Error "Failed to process vCenter Server '$currentServer': $($_.Exception.Message)"
             $overallSummary.failed_servers += @{
-                server_name = $currentServer
-                error_message = $_.Exception.Message
+                server_name     = $currentServer
+                error_message   = $_.Exception.Message
                 collection_time = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
             }
 
-            # Ensure we disconnect even on error
+
             if ($Global:DefaultVIServers.Count -gt 0) {
                 Write-ColorOutput "Disconnecting from $currentServer due to error..." -ForegroundColor Yellow
                 Disconnect-VIServer -Server $currentServer -Confirm:$false -ErrorAction SilentlyContinue
@@ -824,7 +806,7 @@ try {
         }
     }
 
-    # Create overall summary report
+
     $overallSummary.collection_end_time = Get-Date
     $overallSummary.total_duration_minutes = [math]::Round(($overallSummary.collection_end_time - $overallSummary.collection_start_time).TotalMinutes, 2)
 
