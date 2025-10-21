@@ -63,7 +63,7 @@
     - databases: Array of database objects with name, size, owner metadata
 
 .NOTES
-    Version        : 1.0.17
+    Version        : 1.0.27
     Last Modified  : 2025-10-22
     Prerequisite   : PowerShell 5.1+, PostgreSQL psql.exe client, administrative privileges for service queries
 
@@ -107,7 +107,6 @@
 #>
 
 #Requires -Version 5.1
-
 [CmdletBinding()]
 param()
 
@@ -206,6 +205,105 @@ function Find-PostgreSQLInstallations {
     return , $installations
 }
 
+function Get-PostgreSQLPort {
+    [CmdletBinding()]
+    [OutputType([int])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ServiceName = $null
+    )
+    
+    $defaultPort = 5432
+    
+    if (-not [string]::IsNullOrWhiteSpace($ServiceName)) {
+        try {
+            $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+            if ($null -ne $service -and -not [string]::IsNullOrWhiteSpace($service.PathName)) {
+                if ($service.PathName -match '--port[=\s]+(\d+)|-p\s+(\d+)') {
+                    $port = if ($Matches[1]) { [int]$Matches[1] } else { [int]$Matches[2] }
+                    Write-Verbose "Discovered port $port from service command line"
+                    return $port
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Failed to query service command line: $_"
+        }
+    }
+    
+    $registryPaths = @(
+        'HKLM:\SOFTWARE\PostgreSQL\Installations',
+        'HKLM:\SOFTWARE\WOW6432Node\PostgreSQL\Installations'
+    )
+    
+    foreach ($regPath in $registryPaths) {
+        if (Test-Path -Path $regPath -ErrorAction SilentlyContinue) {
+            $items = Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue
+            foreach ($item in $items) {
+                try {
+                    $portValue = Get-ItemProperty -Path $item.PSPath -Name 'Port' -ErrorAction SilentlyContinue
+                    if ($null -ne $portValue -and $null -ne $portValue.Port -and $portValue.Port -gt 0) {
+                        Write-Verbose "Discovered port $($portValue.Port) from registry: $($item.PSPath)"
+                        return [int]$portValue.Port
+                    }
+                }
+                catch {
+                    Write-Verbose "Port property not found in registry path: $($item.PSPath)"
+                }
+            }
+        }
+    }
+    
+    $configPaths = @(
+        'C:\Program Files\PostgreSQL\*\data\postgresql.conf',
+        'C:\Program Files (x86)\PostgreSQL\*\data\postgresql.conf',
+        'C:\PostgreSQL\*\data\postgresql.conf',
+        "$env:ProgramData\PostgreSQL\*\data\postgresql.conf"
+    )
+    
+    foreach ($pattern in $configPaths) {
+        $configFiles = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+        foreach ($configFile in $configFiles) {
+            try {
+                $content = Get-Content -Path $configFile.FullName -ErrorAction SilentlyContinue
+                foreach ($line in $content) {
+                    if ($line -match '^\s*port\s*=\s*(\d+)') {
+                        $port = [int]$Matches[1]
+                        Write-Verbose "Discovered port $port from config file: $($configFile.FullName)"
+                        return $port
+                    }
+                }
+            }
+            catch {
+                Write-Verbose "Failed to read config file $($configFile.FullName): $_"
+            }
+        }
+    }
+    
+    $portsToCheck = @(5432, 5433, 5434, 5435)
+    foreach ($port in $portsToCheck) {
+        try {
+            $listener = [System.Net.Sockets.TcpClient]::new()
+            $connectTask = $listener.ConnectAsync('127.0.0.1', $port)
+            $timeout = 500
+            if ($connectTask.Wait($timeout)) {
+                $listener.Close()
+                $listener.Dispose()
+                Write-Verbose "Discovered active PostgreSQL port: $port"
+                return $port
+            }
+            $listener.Close()
+            $listener.Dispose()
+        }
+        catch {
+            Write-Verbose "Port $port not responding"
+        }
+    }
+    
+    Write-Verbose "Port autodiscovery failed, using default port: $defaultPort"
+    return $defaultPort
+}
+
 function Test-PostgreSQLService {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -218,12 +316,16 @@ function Test-PostgreSQLService {
     }
     
     $runningService = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | 
-    Where-Object { $_.Status -eq 'Running' } | 
-    Select-Object -First 1
+        Where-Object { $_.Status -eq 'Running' } | 
+        Select-Object -First 1
     
     if ($null -ne $runningService) {
         $result.IsRunning = $true
         $result.ServiceName = $runningService.Name
+        $result.Port = Get-PostgreSQLPort -ServiceName $runningService.Name
+    }
+    else {
+        $result.Port = Get-PostgreSQLPort
     }
     
     return $result
